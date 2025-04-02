@@ -1,0 +1,47 @@
+[gd_scene load_steps=7 format=3 uid="uid://clnhr8np3vjm7"]
+
+[ext_resource type="Texture2D" uid="uid://c51tad7mtffr2" path="res://Samuri run.png" id="1_e4ksr"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_oksa0"]
+atlas = ExtResource("1_e4ksr")
+region = Rect2(0, 0, 800, 1600)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6lvwu"]
+atlas = ExtResource("1_e4ksr")
+region = Rect2(800, 0, 800, 1600)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fxrtd"]
+atlas = ExtResource("1_e4ksr")
+region = Rect2(1600, 0, 800, 1600)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_owgfs"]
+atlas = ExtResource("1_e4ksr")
+region = Rect2(0, 1600, 800, 1600)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_t5ad0"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_oksa0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6lvwu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fxrtd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_owgfs")
+}],
+"loop": true,
+"name": &"run",
+"speed": 5.0
+}]
+
+[node name="Run" type="AnimatedSprite2D"]
+visible = false
+texture_filter = 5
+position = Vector2(-1, -1.5)
+scale = Vector2(0.133, 0.133)
+sprite_frames = SubResource("SpriteFrames_t5ad0")
+animation = &"run"

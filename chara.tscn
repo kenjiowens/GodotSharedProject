@@ -1,0 +1,497 @@
+[gd_scene load_steps=30 format=3 uid="uid://c144mtttlxe0c"]
+
+[ext_resource type="Texture2D" uid="uid://ghaxlfsouek2" path="res://Samuri.png" id="1_y3apl"]
+[ext_resource type="Texture2D" uid="uid://b7tsanp4y8ypa" path="res://OTHER DIRECTION.png" id="2_13vos"]
+[ext_resource type="Texture2D" uid="uid://c51tad7mtffr2" path="res://Samuri run.png" id="3_ip3lw"]
+[ext_resource type="Texture2D" uid="uid://hvh4nl377cl5" path="res://Samuri JUMP EDIT.png" id="4_gd5lo"]
+[ext_resource type="Texture2D" uid="uid://dyypulw4rhnct" path="res://Slash.png" id="5_qpj02"]
+[ext_resource type="Texture2D" uid="uid://u3j8j13ik2u2" path="res://Samuri FOWARD SLASH only.png" id="6_13bph"]
+[ext_resource type="AudioStream" uid="uid://dxas7xqcatdnq" path="res://BeepBox-Song (2).mp3" id="7_imq1a"]
+
+[sub_resource type="GDScript" id="GDScript_wwhht"]
+script/source = "extends CharacterBody2D
+
+var chara: Node = null
+var health = 20
+const SPEED = 340
+const JUMP_VELOCITY = -350.0
+const DASH_SPEED = 800
+const DASH_DURATION = 0.15
+const AIR_FRICTION = 5.0
+const INERTIA = 5
+@onready var run = $Run as AnimatedSprite2D
+@onready var jumpup = $Jump as AnimatedSprite2D
+var air = 2
+var dashing = false
+var dash_timer = 0.0
+var dashcount = 1
+var sprite: Sprite2D
+var left_texture: Texture
+var right_texture: Texture
+var face_right = true
+var jump_count = 2
+var can_timer_dash = true
+enum States {RUNNING, JUMPING, IDLE,}
+var state: States = States.IDLE
+var damaged = false
+var timestopped = false
+var timestoppable = true
+
+var time_accumulator = 0.0
+var damaged_timer = 0.0
+var knockback_force = 6000
+var knockback_duration = 0.3
+var knockback_direction = Vector2(1, -1).normalized()
+var attackboxactive = false
+@onready var my_timer = $my_timer
+@onready var hitbox: Area2D = $hitbox
+@onready var area = $hitbox
+func _ready():
+	sprite = get_node(\"Right\")
+	left_texture = preload(\"res://OTHER DIRECTION.png\")
+	right_texture = preload(\"res://Samuri.png\")
+	floor_max_angle = deg_to_rad(45)
+	damaged_timer = 0.3
+	$timestop.monitorable = false
+
+func _physics_process(delta: float) -> void:
+	if timestopped == true:
+		$timestop.monitorable = true
+	else:
+		$timestop.monitorable = false
+	if face_right:
+		$slash.scale = Vector2(1, 1)  # Normal orientation
+		$attack.scale = Vector2(1, 1)
+		$attack.position.x = abs($attack.position.x)
+	else:
+		$slash.scale = Vector2(-1, 1)  # Flip horizontally
+		$attack.scale = Vector2(-1, 1)
+		$attack.position.x = -abs($attack.position.x)
+
+	if attackboxactive:
+		$attack/attackbox.disabled = false
+
+
+	if Input.is_action_pressed(\"attack\") and my_timer.is_stopped():
+		attackboxactive = true
+		$slash.visible = true
+		$slash.play(\"slash\")
+		my_timer.start()
+		$attack/attackbox.disabled = false
+
+		# Flip slash and attack based on input direction
+		if face_right:
+			$slash.scale.x = 1  # Face right
+			$attack.position.x = abs($attack.position.x)  # Ensure attack is on the right side
+		else:
+			$slash.scale.x = -1  # Face left
+			$attack.position.x = -abs($attack.position.x)  # Ensure attack is on the left side
+
+	if not is_on_floor() and not dashing:
+		velocity += get_gravity() * delta
+
+	if not is_on_floor() and dashing:
+		dashcount -= 1
+
+	if is_on_floor():
+		dashcount = 1
+		jump_count = 2
+
+	if Input.is_action_just_pressed(\"ui_accept\") and jump_count > 0:
+		velocity.y = JUMP_VELOCITY
+		jump_count -= 1
+
+	var direction := Input.get_axis(\"ui_left\", \"ui_right\")
+
+	if state == States.IDLE and not is_on_floor():
+		state = States.JUMPING
+
+	if direction != 0 and is_on_floor():
+		state = States.RUNNING
+
+	if direction == 0 and is_on_floor():
+		state = States.IDLE
+
+	if not is_on_floor():
+		state = States.JUMPING
+
+	if direction < 0 and state == States.RUNNING:
+		jumpup.visible = false
+		sprite.visible = false
+		run.flip_h = true
+		run.visible = true
+		run.play()
+		face_right = false
+	elif direction > 0 and state == States.RUNNING:
+		jumpup.visible = false
+		run.flip_h = false
+		run.visible = true
+		run.play(\"run\")
+		sprite.texture = null
+		face_right = true
+	elif (direction == 0 or is_on_wall()) and face_right == true and state == States.IDLE:
+		jumpup.visible = false
+		run.visible = false
+		sprite.texture = right_texture
+		sprite.flip_h = false
+		sprite.visible = true
+	elif (direction == 0 or is_on_wall()) and face_right == false and state == States.IDLE:
+		jumpup.visible = false
+		run.visible = false
+		sprite.texture = right_texture
+		sprite.flip_h = true
+		sprite.visible = true
+
+	if direction > 0 and state == States.JUMPING:
+		face_right = true
+		var jump_node = get_node(\"Jump\")
+		jump_node.scale = Vector2(0.69, jump_node.scale.y)
+		jump_node.position = Vector2(165.34, jump_node.position.y)
+		jump_node.visible = true
+		run.visible = false
+		jumpup.visible = true
+		jumpup.flip_h = false
+		jumpup.play(\"jump\")
+		sprite.flip_h = false
+	elif direction < 0 and not is_on_floor() and state == States.JUMPING:
+		face_right = false
+		var jump_node = get_node(\"Jump\")
+		jump_node.scale = Vector2(-0.69, jump_node.scale.y)
+		jump_node.position = Vector2(-165.34, jump_node.position.y)
+		jump_node.visible = true
+		run.visible = false
+		jumpup.visible = true
+		jumpup.play(\"jump\")
+		
+		
+
+	if Input.is_action_just_pressed(\"dash\") and not dashing and dashcount > 0:
+		dashing = true
+		dash_timer = DASH_DURATION
+		velocity.x = direction * DASH_SPEED
+
+	if dashing:
+		$attack/attackbox.disabled = true
+		dash_timer -= delta
+		if dash_timer <= 0.0:
+			dashing = false
+			velocity.x = 0
+			velocity.y = 0
+
+	if not is_on_floor():
+		if direction == 0:
+			velocity.x = move_toward(velocity.x, 0, AIR_FRICTION)
+		else:
+			velocity.x = direction * DASH_SPEED if dashing else direction * SPEED
+
+	if is_on_floor() and not dashing:
+		if direction != 0:
+			velocity.x = direction * SPEED
+		else:
+			velocity.x = move_toward(velocity.x, 0, SPEED)
+		if is_on_floor() and not dashing and direction != 0:
+			velocity.x = lerp(velocity.x, direction * SPEED, INERTIA * delta)
+		else:
+			velocity.x = move_toward(velocity.x, 0, INERTIA * delta)
+
+	if Input.is_action_pressed(\"ui_left\"):
+		$slash.scale.x = -1
+	elif Input.is_action_pressed(\"ui_right\"):
+		$slash.scale.x = 1
+
+	if damaged:
+		velocity = Vector2(knockback_force, -knockback_force / 12) # Apply knockback
+		move_and_slide()
+		damaged = false
+		health -= 1
+
+	if health == 0:
+		get_tree().reload_current_scene()
+	if Input.is_action_pressed(\"timestop\") && timestoppable == true:
+		print(\"timestopped\")
+		timestopped = true
+		$timestoptimer.start()
+		$timestopdelay.start()
+	
+	for a in area.get_overlapping_areas():
+		print(\"Entered area:\", a.name)
+		if a.name in [\"slash\", \"laserbeam\"]:
+			damaged = true
+
+	move_and_slide()
+
+
+func _on_slash_animation_looped():
+	$slash.visible = false
+	$slash.stop()
+	$slash.frame = 0
+	attackboxactive = false
+	$attack/attackbox.disabled = true
+
+func _on_slash_frame_changed() -> void:
+	# Check the frames where the attack should be active
+	if $slash.frame in [2, 3]:
+		print(\"attacking\")
+		attackboxactive = true
+		$attack/attackbox.disabled = false
+	else:
+		attackboxactive = false
+		$attack/attackbox.disabled = true
+
+
+func _on_timestopdelay_timeout() -> void:
+	timestoppable = true
+	print(\"ova\")
+	
+
+
+func _on_timestoptimer_timeout() -> void:
+	timestoppable = false
+
+
+func _on_hitbox_area_entered(area: Area2D) -> void:
+	print(\"Entered area:\", area.name)  # Debug: Print the area name		
+	if area.name in [\"slash\", \"laserbeam\"]:
+		damaged = true
+"
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ns4ey"]
+size = Vector2(52, 85)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fxrtd"]
+atlas = ExtResource("3_ip3lw")
+region = Rect2(1600, 0, 800, 1600)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_owgfs"]
+atlas = ExtResource("3_ip3lw")
+region = Rect2(0, 1600, 800, 1600)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6lvwu"]
+atlas = ExtResource("3_ip3lw")
+region = Rect2(800, 0, 800, 1600)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_oksa0"]
+atlas = ExtResource("3_ip3lw")
+region = Rect2(0, 0, 800, 1600)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_hmiss"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fxrtd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_owgfs")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6lvwu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_oksa0")
+}],
+"loop": true,
+"name": &"run",
+"speed": 20.0
+}]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sajpo"]
+atlas = ExtResource("4_gd5lo")
+region = Rect2(1920, 0, 640, 640)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_337wl"]
+atlas = ExtResource("4_gd5lo")
+region = Rect2(0, 640, 640, 640)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_b3pct"]
+atlas = ExtResource("4_gd5lo")
+region = Rect2(640, 640, 640, 640)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_c77no"]
+atlas = ExtResource("4_gd5lo")
+region = Rect2(1280, 640, 640, 640)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_6auuf"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sajpo")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_337wl")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_b3pct")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_c77no")
+}],
+"loop": true,
+"name": &"jump",
+"speed": 5.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_qqg31"]
+size = Vector2(25, 65)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_47ank"]
+atlas = ExtResource("6_13bph")
+region = Rect2(0, 0, 370, 160)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_w3e08"]
+atlas = ExtResource("6_13bph")
+region = Rect2(370, 0, 370, 160)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_46w3d"]
+atlas = ExtResource("6_13bph")
+region = Rect2(0, 160, 370, 160)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a0s15"]
+atlas = ExtResource("6_13bph")
+region = Rect2(370, 160, 370, 160)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rtpek"]
+atlas = ExtResource("6_13bph")
+region = Rect2(0, 320, 370, 160)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sx3b6"]
+atlas = ExtResource("6_13bph")
+region = Rect2(370, 320, 370, 160)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_uycu7"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_47ank")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_w3e08")
+}, {
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_46w3d")
+}, {
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_a0s15")
+}, {
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_rtpek")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sx3b6")
+}],
+"loop": true,
+"name": &"slash",
+"speed": 5.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_7jose"]
+size = Vector2(82, 111)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_5xtib"]
+radius = 3208.83
+
+[node name="Char" type="CharacterBody2D"]
+script = SubResource("GDScript_wwhht")
+
+[node name="Right" type="Sprite2D" parent="."]
+texture_filter = 5
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("1_y3apl")
+
+[node name="Left" type="Sprite2D" parent="."]
+visible = false
+texture_filter = 5
+scale = Vector2(0.2, 0.2)
+texture = ExtResource("2_13vos")
+offset = Vector2(32, -16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -4.5)
+shape = SubResource("RectangleShape2D_ns4ey")
+
+[node name="Run" type="AnimatedSprite2D" parent="."]
+visible = false
+texture_filter = 5
+position = Vector2(-1, -1.5)
+scale = Vector2(0.133, 0.133)
+sprite_frames = SubResource("SpriteFrames_hmiss")
+animation = &"run"
+frame_progress = 0.691526
+
+[node name="filler" type="Sprite2D" parent="."]
+visible = false
+position = Vector2(0, -4.5)
+
+[node name="Jump" type="AnimatedSprite2D" parent="."]
+visible = false
+texture_filter = 5
+position = Vector2(165.34, 113.97)
+scale = Vector2(0.69, 0.69)
+sprite_frames = SubResource("SpriteFrames_6auuf")
+animation = &"jump"
+frame_progress = 0.923211
+
+[node name="StateMachine" type="Node" parent="."]
+
+[node name="Running" type="Node" parent="StateMachine"]
+
+[node name="Jumping" type="Node" parent="StateMachine"]
+
+[node name="Attack" type="Sprite2D" parent="."]
+visible = false
+texture_filter = 5
+position = Vector2(66, -5.5)
+rotation = 1.5708
+scale = Vector2(1.85833, 2.20667)
+texture = ExtResource("5_qpj02")
+
+[node name="my_timer" type="Timer" parent="."]
+wait_time = 0.333
+one_shot = true
+
+[node name="hitbox" type="Area2D" parent="."]
+collision_layer = 2
+collision_mask = 2
+
+[node name="hitbox" type="CollisionShape2D" parent="hitbox"]
+position = Vector2(-2.5, -0.5)
+shape = SubResource("RectangleShape2D_qqg31")
+
+[node name="slash" type="AnimatedSprite2D" parent="."]
+texture_filter = 5
+position = Vector2(11, -6)
+scale = Vector2(0.708108, 0.784375)
+sprite_frames = SubResource("SpriteFrames_uycu7")
+animation = &"slash"
+frame_progress = 0.69979
+speed_scale = 4.0
+
+[node name="attack" type="Area2D" parent="."]
+
+[node name="attackbox" type="CollisionShape2D" parent="attack"]
+position = Vector2(74, -11.5)
+shape = SubResource("RectangleShape2D_7jose")
+
+[node name="timestop" type="Area2D" parent="."]
+visible = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="timestop"]
+shape = SubResource("CircleShape2D_5xtib")
+
+[node name="timestoptimer" type="Timer" parent="."]
+wait_time = 3.0
+one_shot = true
+
+[node name="timestopdelay" type="Timer" parent="."]
+wait_time = 14.0
+one_shot = true
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("7_imq1a")
+autoplay = true
+
+[connection signal="area_entered" from="hitbox" to="." method="_on_hitbox_area_entered"]
+[connection signal="area_exited" from="hitbox" to="." method="_on_hitbox_area_exited"]
+[connection signal="animation_looped" from="slash" to="." method="_on_slash_animation_looped"]
+[connection signal="frame_changed" from="slash" to="." method="_on_slash_frame_changed"]
+[connection signal="timeout" from="timestoptimer" to="." method="_on_timestoptimer_timeout"]
+[connection signal="timeout" from="timestopdelay" to="." method="_on_timestopdelay_timeout"]
